@@ -1,35 +1,14 @@
 package xyz.mcomella.webviewgooglelogin
 
-import android.app.PendingIntent.getActivity
-import android.graphics.Bitmap
-import android.net.Uri
-import android.net.http.SslError
-import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
-import android.webkit.WebSettings
-import android.os.Build
-import android.os.Message
-import android.util.Log
 import android.view.KeyEvent
-import android.view.View
-import android.webkit.ClientCertRequest
-import android.webkit.ConsoleMessage
-import android.webkit.GeolocationPermissions
-import android.webkit.HttpAuthHandler
-import android.webkit.JsPromptResult
-import android.webkit.JsResult
-import android.webkit.PermissionRequest
-import android.webkit.RenderProcessGoneDetail
-import android.webkit.SafeBrowsingResponse
-import android.webkit.SslErrorHandler
-import android.webkit.ValueCallback
+import android.view.KeyEvent.KEYCODE_DPAD_DOWN
+import android.view.KeyEvent.KEYCODE_DPAD_LEFT
+import android.view.KeyEvent.KEYCODE_DPAD_UP
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebStorage
-import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AppCompatActivity
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
@@ -39,47 +18,52 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView.settings.apply {
-            setJavaScriptEnabled(true)
+            javaScriptEnabled = true
+
+            // Override UA because Google disabled log in with default WebView UA:
+            //   https://developers.googleblog.com/2016/08/modernizing-oauth-interactions-in-native-apps.html
+            // Other people claim updating the UA fixes this problem: https://stackoverflow.com/a/50374466
+            //
+            // This UA is used by our product and provides the desktop Pinterest experience.
+            // However, this behavior is reproducible in Focus and Firefox for Fire TV which use a
+            // mobile user agent.
+            userAgentString = "Mozilla/5.0 (Linux; Android 5.1.1) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Focus/1.1 Chrome/59.0.3017.125 Safari/537.36"
+
+            // We don't support multi-window and google login on nytimes works without it. though desktop and Chrome use multi-window in this flow.
+            // Setting up multi-window support doesn't seem to fix this issue either though.
             setSupportMultipleWindows(false)
-            setJavaScriptCanOpenWindowsAutomatically(false)
-            setUserAgentString("Mozilla/5.0 (Linux; Android 5.0; SM-G900P Build/LRX21T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.125 Mobile Safari/537.36")
+            javaScriptCanOpenWindowsAutomatically = false
+
+            // Enable everything that seems like it could break the google log in experience.
+            databaseEnabled = true
+            domStorageEnabled = true
+            setAppCacheEnabled(true)
             setGeolocationEnabled(true)
-            setUseWideViewPort(true)
-            setLoadWithOverviewMode(true)
-            setAllowContentAccess(true)
-            setDatabaseEnabled(true)
-            setLoadsImagesAutomatically(true)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW)
-            }
+            loadWithOverviewMode = true
         }
-        webView.webChromeClient = MyWebChromeClient()
-        webView.webViewClient = WVCLient()
-        enableHTML5AppCache(webView)
 
-        webView.loadUrl("https://kotaku.com/")
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+
+        webView.webChromeClient = WebChromeClient()
+        webView.webViewClient = WebViewClient()
+
+        // Load other urls with key events (on the emulator) or by swapping this url with others.
+        webView.loadUrl("https://pinterest.com/")
     }
 
-    fun enableHTML5AppCache(mWebView: WebView) {
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        when (event?.keyCode) {
+            KEYCODE_DPAD_DOWN -> webView.loadUrl("https://pinterest.com") // google login does not work
+            KEYCODE_DPAD_UP -> webView.loadUrl("https://nytimes.com") // google login works
+            KEYCODE_DPAD_LEFT -> webView.loadUrl("https://google.com") // to check login state
 
-        mWebView.getSettings().setDomStorageEnabled(true);
+            else -> super.dispatchKeyEvent(event)
+        }
 
-        // Set cache size to 8 mb by default. should be more than enough
-        mWebView.getSettings().setAppCacheMaxSize(1024 * 1024 * 8);
-
-        // This next one is crazy. It's the DEFAULT location for your app's cache
-        // But it didn't work for me without this line
-        mWebView.getSettings().setAppCachePath("/data/data/" + this.getPackageName() + "/cache");
-        mWebView.getSettings().setAllowFileAccess(true);
-        mWebView.getSettings().setAppCacheEnabled(true);
-
-        mWebView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+        return true
     }
 }
 
-class WVCLient : WebViewClient() {
-}
-
-class MyWebChromeClient : WebChromeClient() {
-}
